@@ -1,0 +1,217 @@
+# Master katuali configuration file template
+# ------------------------------------------
+#
+# Having copied this file with the command:
+#     katuali_config my_config.yaml
+# it will be necessary to amend the `DATA:` dictionary in the first section below
+# to define the dataset to be processed.
+#
+# The second section containing software locations should also be checked and
+# amended if necessary.
+#
+# To run the predefined workflows: fast_assm_polish standard_assm_polish
+# standard_assm_nanopolish all_medaka_train_features starting from fast5 input,
+# nothing else need be done. If starting a workflow from basecall data
+# (https://nanoporetech.github.io/katuali/examples.html#starting-from-existing-basecalls),
+# basecalls should be placed under a folder as determined by the value of the
+# `BASECALLER` in the pipeline options.
+
+
+####################
+# Input data options
+
+# .fast5 files can be under top-level folders named by a RUNID (these need not
+# be actual run UUIDs). Fast5s should be in RUNID/reads.  The keys within this
+# data dictionary are RUNIDs.
+#
+# REFERENCE is required for the medaka training workflows, and in general any
+# time reads need to be aligned to a reference (e.g. for for subsampling)
+# and for calling variants. 
+#   
+# MEDAKA_TRAIN_REGIONS and MEDAKA_EVAL_REGIONS define regions for
+# training and evaluation within the medaka training workflow, and are
+# otherwise not used. 
+#
+# MEDAKA_VARIANT_REGIONS is used in the medaka_all_variant workflow. 
+#
+# GENOME_SIZE is required only in workflows using the canu assembler.
+#
+# In the example below we train from the "minion" run using "ecoli" and "yeast"
+# contigs in the reference and evaluate on the "gridion" run using the contigs
+# "ecoli", "yeast" and "na12878_chr21" in the reference.
+DATA:
+    'MinIonRun1': 
+        'GENOME_SIZE': '30M'
+        'MEDAKA_TRAIN_REGIONS': ['chr1','chr2','chr3','chr4','chr5','chr6','chr7','chr8','chr9','chr10','chr11','chr12','chr13','chr14','chr15','chr16','chr17','chr18','chr19','chr20','chr21','chr22','chr23','chr24','chr25','chr26','chr27','chr28','chr29','chr30','KC598086.1','KC568456.1']
+        'MEDAKA_EVAL_REGIONS': []
+        'MEDAKA_VARIANT_REGIONS': []
+        'REFERENCE': 'genome.fa'
+    'MinIonRun2': 
+        'GENOME_SIZE': '30M'
+        'MEDAKA_TRAIN_REGIONS': []
+        'MEDAKA_EVAL_REGIONS': ['chr1','chr2','chr3','chr4','chr5','chr6','chr7','chr8','chr9','chr10','chr11','chr12','chr13','chr14','chr15','chr16','chr17','chr18','chr19','chr20','chr21','chr22','chr23','chr24','chr25','chr26','chr27','chr28','chr29','chr30','KC598086.1','KC568456.1']
+        'MEDAKA_VARIANT_REGIONS': []
+        'REFERENCE': 'genome.fa'   
+
+##############################
+# Location of various software
+#
+# Configuration for software is found toward the end of this config.
+
+# Katuali supports running medaka consensus only on CPU and training only on
+# GPU. If you wish to train and run consensus it is easiest to create two
+# medaka virtual environemnts - one for GPU (with tensorflow-gpu installed) and
+# one for CPU (with just tensorflow installed). 
+IN_MEDAKA: "/opt/medaka/bin/activate"  # medaka used for consensus - should only have tensorflow installed
+IN_MEDAKA_GPU: "~/git/medaka_gpu/venv/bin/activate"  # medaka used for training - should have tensorflow-gpu installed
+IN_POMOXIS: "/opt/pomoxis/bin/activate"
+IN_RAY: "~/git/ray/venv/bin/activate"
+CANU_EXEC: "~/git/canu-1.8/Linux-amd64/bin/canu"
+NANOPOLISH: "~/git/nanopolish" 
+SCRAPPIE: "~/git/scrappie"
+FLAPPIE: "~/git/github/flappie"
+GUPPY: "/usr/bin/guppy_basecaller"
+SOURCE: "source"
+LD_LIBRARY_PATH: ""  # set this for e.g. CUDA library path
+
+
+##################
+# Pipeline options
+
+# Basecaller for predefined workflows. The `fast_assm_polish`,
+# `standard_assm_polish` `standard_assm_nanopolish` and medaka training
+# workflows use this value to determine the basecaller setup to use.
+#
+# It is recommended to set this to: guppy_flipflop
+BASECALLER: "guppy_flipflop" 
+
+
+#########################
+# Compute/cluster options
+
+# Location of scratch space on cluster nodes. This is currently only used for
+# medaka training where latency on an networked filesystem can significantly
+# slow things down. To have katuali copy medaka features to scratch space
+# before training set SCRATCH and optionally TMPSCRATCH.
+#
+# If TMPSCRATCH is given the resultant path will be:
+#     /SCRATCH/$USER/TMPSCRATCH
+# whereas if it is not given the resultant path will be:
+#    /SCRATCH/$USER/<generated unique name>
+#
+# TMPSCRATCH is useful in the case of restarting a training job on a node to
+# which features have already been copied; in this case, simply set TMPSCRATCH
+# to the directory under which the features were copied and katuali will skip
+# copying the data and use the existing data.
+#
+# Note that katuali does not delete the data in scratch, so users must do this
+# manually.
+SCRATCH: ""
+TMPSCRATCH: ""
+
+# default number of threads/cores/slots to use per multi-threaded task.
+THREADS_PER_JOB: 32
+
+
+#############################
+# Options for medaka training
+
+# This section can be ignored if not running a medaka training workflow
+
+# Read depths at which to create assemblies for training, this should
+# span the range of depths at which the model is to be used
+# Use the --keep-going option of Snakemake if you are happy the relax
+# the constraint of requiring all depths for all reference sequences. 
+DEPTHS:
+    [25, 50, 75, 100]
+
+# if any of your medaka feature files are misssing (e.g. due to insufficient coverage for some runs / contigs)
+# the medaka training step will not find all the features it expects and will not run. 
+# If you want to just train on the feauture files which did get created, you can set this flag to true
+# (after having already created the features with the flag set to false) 
+USE_ONLY_EXISTING_MEDAKA_FEAT: false
+
+# Run multiple training replicates - output will be in medaka_train_{suffix}
+MEDAKA_TRAIN_REPLICATES:
+    ["rep_1", "rep_2", "rep_3"]
+
+# to test multiple trained models, use multiple suffixes. 
+# The suffix should be a key within MEDAKA_OPTS specifying the path of a trained model 
+MEDAKA_EVAL_SUFFIXES: ["_rep_1_best_val", "_rep_2_best_val", "_rep_3_best_val"]
+MEDAKA_OPTS: 
+    "": ""
+    "_flipflop": "-m r941_flip235"
+    "_rep_1_best_val": "-m medaka_train_rep1/model.best.val.hdf5"
+    "_rep_2_best_val": "-m medaka_train_rep2/model.best.val.hdf5"
+    "_rep_3_best_val": "-m medaka_train_rep3/model.best.val.hdf5"
+
+# Medaka training features
+MEDAKA_TRAIN_TRUTH_CHUNK: 10000  # this sets the size of truth chunks aligned to draft to provide labels. 
+MEDAKA_TRAIN_FEAT_OPTS:
+    "": "--chunk_len 1000 --chunk_ovlp 0"
+
+MEDAKA_TRAIN_OPTS:
+    "": "--mini_epochs 5 --validation_split 0.10"
+
+# Medaka training can be IO-limited - using mult-threading to load data can speed things up
+MEDAKA_TRAIN_THREADS_IO: 8
+
+MEDAKA_VARIANT_OPTS:
+    "_flipflop": "-m r941_flip235 -d"
+
+MEDAKA_VARIANT_SUFFIXES: ["_flipflop"]
+
+
+############################
+# Misc. options for programs
+#
+# For advanced users. See
+# https://nanoporetech.github.io/katuali/examples.html#examples
+# for help in contructing bespoke pipelines.
+#
+# For fully specified targets, rather than predefined workflows the below can
+# be used to manipulate how each program is run. Each key acts as a shortcut
+# for a specific parameter set (as well as functioning as a target name).
+# Default parameters are given by the `""` targets
+
+# Scrappie 
+SCRAPPIE_OPTS: 
+    "": "raw --model rgrgr_r94 --uuid"
+    "_hp": "raw -H mean --model rgrgr_r94 --uuid"
+        
+# Flappie 
+FLAPPIE_OPTS: 
+    "": "raw --model rgrgr_r94 --uuid"
+    "_r10c_pcr": "--model=r10c_pcr"
+
+# Guppy        
+GUPPY_OPTS: 
+    "": "-c dna_r9.4.1_450bps.cfg"
+    "_flipflop": "-c dna_r9.4.1_450bps_flipflop.cfg"
+GUPPY_SLOTS: 8  # for passing to SGE parallel environment
+
+# subsample_bam
+SUBSAMPLE_BAM_OPTS:
+    "": " --all_fail"
+    "_prop": "--proportional --all_fail"
+    "_filtered": "--quality 6 --coverage 90 --all_fail"
+
+# mini_assemble
+MINI_ASSEMBLE_OPTS: 
+    "": ""
+    "_ce": "-c -e 10"
+    "_ces": "-c -e 10 -n 10"
+ 
+# Canu 
+CANU_EXEC_OPTS: "useGrid=False" # this shouldn't be changed, snakemake will be confused
+CANU_OPTS:
+    "": "" 
+
+# Nanopolish
+# wildcards in dynamic files cannot be constrained => we can't safely extract a
+# suffix from dynamic nanopolish targets since they use nested config
+NANOPOLISH_OPTS: "--fix-homopolymers"
+
+# assess_assembly
+ASSESS_ASSM_OPTS: "-C"
+
